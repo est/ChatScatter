@@ -586,91 +586,158 @@ dialog::backdrop { background: rgba(0, 0, 0, .3); backdrop-filter: blur(2px); }
 }
 
 /* === Chat: Messages === */
-.msg {
-  max-width: 760px;
-  margin: 0 auto 16px;
+.messages {
+  padding: 24px 28px;
 }
+
+.msg {
+  display: flex;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+
+.msg-user { justify-content: flex-end; }
+.msg-assistant { justify-content: flex-start; }
 
 .msg-label {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 6px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
 }
 
-.msg-user .msg-label { color: var(--green-700); }
-.msg-assistant .msg-label { color: var(--text-muted); }
+.msg-user .msg-label { text-align: right; }
 
 .msg-body {
   font-size: 14px;
   line-height: 1.7;
-  color: var(--text-primary);
+  color: #2d2d2d;
+  max-width: 680px;
 }
 
 .msg-user .msg-body {
   background: var(--green-50);
   border: 1px solid var(--green-200);
-  border-radius: var(--radius-lg);
-  padding: 12px 16px;
+  border-radius: 16px 16px 4px 16px;
+  padding: 10px 16px;
+  color: #1a1a1a;
 }
 
 .msg-assistant .msg-body {
-  padding: 4px 0;
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 16px 16px 16px 4px;
+  padding: 12px 16px;
 }
 
-.msg-loading .msg-body { color: var(--text-muted); }
+.msg-loading .msg-body { color: var(--text-muted); font-style: italic; }
 .msg-error .msg-body { color: #dc2626; font-size: 13px; }
 
-/* Markdown rendered content */
+.msg-content { max-width: 90%; }
+
+.highlight-flash {
+  animation: flash-bg 1.2s ease;
+}
+
+@keyframes flash-bg {
+  0%, 100% { background: transparent; }
+  20% { background: rgba(34, 197, 94, 0.12); }
+}
+
+/* Fold/expand */
+.msg-fold-btn {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 8px;
+  margin-top: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fafafa;
+  user-select: none;
+}
+
+.msg-fold-btn:hover { background: #eee; color: #555; }
+
+.msg-body.folded {
+  max-height: 80px;
+  overflow: hidden;
+  position: relative;
+}
+
+.msg-body.folded::after {
+  content: "";
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 40px;
+  background: linear-gradient(transparent, #f5f5f5);
+  pointer-events: none;
+}
+
+/* Markdown rendered content — restrained gray tones */
 .msg-body h2 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
-  color: var(--green-800);
-  margin: 20px 0 8px;
-  padding: 8px 12px;
-  background: var(--green-50);
-  border-left: 3px solid var(--green-500);
+  color: #1a1a1a;
+  margin: 18px 0 6px;
+  padding: 6px 10px;
+  background: #eee;
+  border-left: 3px solid #999;
   border-radius: 0 var(--radius) var(--radius) 0;
   cursor: pointer;
   transition: all .12s;
 }
 
 .msg-body h2:hover {
-  background: var(--green-100);
-  border-left-color: var(--green-400);
+  background: #e0e0e0;
+  border-left-color: #666;
 }
 
 .msg-body h2::before {
   content: "▸ ";
-  color: var(--green-500);
+  color: #999;
+  font-size: 12px;
 }
 
-.msg-body p { margin: 8px 0; }
-.msg-body ul, .msg-body ol { margin: 8px 0; padding-left: 24px; }
-.msg-body li { margin: 4px 0; }
+.msg-body p { margin: 6px 0; color: #333; }
+.msg-body ul, .msg-body ol { margin: 6px 0; padding-left: 20px; }
+.msg-body li { margin: 3px 0; color: #333; }
+.msg-body strong { color: #1a1a1a; }
+.msg-body em { color: #555; }
+
 .msg-body code {
   font-family: var(--font-mono);
   font-size: 13px;
-  background: var(--bg-hover);
-  padding: 2px 6px;
-  border-radius: 4px;
+  background: #eee;
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: #333;
 }
+
 .msg-body pre {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border);
+  background: #f0f0f0;
+  border: 1px solid #ddd;
   border-radius: var(--radius);
   padding: 12px;
   overflow-x: auto;
-  margin: 12px 0;
+  margin: 10px 0;
 }
-.msg-body pre code {
-  background: none;
-  padding: 0;
-}
+
+.msg-body pre code { background: none; padding: 0; color: #222; }
+
 .msg-body blockquote {
-  border-left: 3px solid var(--green-300);
+  border-left: 3px solid #ccc;
   padding-left: 12px;
-  color: var(--text-secondary);
-  margin: 12px 0;
+  color: #666;
+  margin: 10px 0;
+}
+
+.msg-body h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #222;
+  margin: 12px 0 4px;
 }

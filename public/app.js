@@ -78,7 +78,7 @@ function renderNodes(parentPath, focusHex) {
     const label = n.user_content.length > 30 ? n.user_content.slice(0, 30) + "..." : n.user_content;
 
     return `
-      <div class="node-item ${isFocus ? "focus" : ""}" onclick="window._focusNode('${nodeId}')">
+      <div class="node-item ${isFocus ? "focus" : ""}" onclick="window._scrollToNode('${nodeId}')">
         <span class="node-arrow">${hasChildren ? "▸" : "·"}</span>
         <span class="node-label">${esc(label)}</span>
       </div>
@@ -102,6 +102,23 @@ window._focusNode = async function(nodeId) {
   await loadTree(activeConvId);
   renderConvList();
   renderMessages();
+};
+
+window._scrollToNode = function(nodeId) {
+  const el = document.getElementById("msg-" + nodeId);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("highlight-flash");
+    setTimeout(() => el.classList.remove("highlight-flash"), 1200);
+  }
+};
+
+window.toggleFold = function(nodeId) {
+  const body = document.getElementById("ai-body-" + nodeId);
+  const btn = body?.nextElementSibling;
+  if (!body) return;
+  body.classList.toggle("folded");
+  if (btn) btn.textContent = body.classList.contains("folded") ? "展开" : "收起";
 };
 
 async function loadTree(convId) {
@@ -156,18 +173,23 @@ function renderNodeMessage(node) {
   let html = "";
 
   html += `
-    <div class="msg msg-user">
-      <div class="msg-label">You</div>
-      <div class="msg-body">${esc(node.user_content)}</div>
+    <div class="msg msg-user" id="msg-${nodeId}">
+      <div class="msg-content">
+        <div class="msg-label">You</div>
+        <div class="msg-body">${esc(node.user_content)}</div>
+      </div>
     </div>
   `;
 
   if (node.assistant_content) {
     const rendered = renderMarkdown(node.assistant_content, nodeId);
     html += `
-      <div class="msg msg-assistant">
-        <div class="msg-label">AI</div>
-        <div class="msg-body">${rendered}</div>
+      <div class="msg msg-assistant" id="msg-ai-${nodeId}">
+        <div class="msg-content">
+          <div class="msg-label">AI</div>
+          <div class="msg-body" id="ai-body-${nodeId}">${rendered}</div>
+          <span class="msg-fold-btn" onclick="toggleFold('${nodeId}')">收起</span>
+        </div>
       </div>
     `;
   }
