@@ -23,7 +23,7 @@ export async function callLLM(env: Env, messages: LLMMessage[]): Promise<LLMResp
   };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
 
-  const url = `${model.base_url}${model.endpoint}`;
+  const url = `${model.base_url}${model.endpoint}/chat/completions`;
   const res = await fetch(url, {
     method: "POST",
     headers,
