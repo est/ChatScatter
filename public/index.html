@@ -11,19 +11,32 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <h1>ChatScatter</h1>
-        <button id="btn-new">+ New</button>
+        <div class="header-actions">
+          <button id="btn-new-chat" title="新对话">＋</button>
+          <a href="/providers.html" class="btn-settings" title="供应商管理">⚙</a>
+        </div>
       </div>
       <nav id="tree"></nav>
     </aside>
+
     <main class="main">
-      <div class="main-header" id="main-header">Select a conversation</div>
-      <div class="messages" id="messages"></div>
+      <div class="main-header">
+        <span id="main-header-title">Select a conversation</span>
+        <span id="main-header-meta" class="header-meta"></span>
+      </div>
+      <div class="messages" id="messages">
+        <div class="empty-state">
+          <div class="empty-state-icon">&gt;_</div>
+          <div class="empty-state-text">Start a new conversation</div>
+        </div>
+      </div>
       <div class="input-area">
         <textarea id="input" placeholder="Type a message..." rows="1"></textarea>
         <button id="send">Send</button>
       </div>
     </main>
   </div>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>

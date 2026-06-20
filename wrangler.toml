@@ -4,3 +4,8 @@ compatibility_date = "2024-12-01"
 
 [assets]
 directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "chatscatter"
+database_id = "8d197612-b066-424d-b4a2-1b41fa91eb0e"

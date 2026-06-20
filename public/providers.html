@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>供应商管理 - ChatScatter</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1><a href="/" style="color:inherit;text-decoration:none">ChatScatter</a></h1>
+        <a href="/" class="btn-settings" title="返回聊天">←</a>
+      </div>
+      <nav id="tree"></nav>
+    </aside>
+
+    <main class="main">
+      <div class="main-header">
+        <span>供应商管理</span>
+        <button id="btn-add-provider" class="btn-add-provider-page">＋ 添加供应商</button>
+      </div>
+      <div class="provider-content" id="provider-content"></div>
+    </main>
+  </div>
+
+  <!-- 添加供应商弹窗 -->
+  <dialog id="dialog-add-provider">
+    <form id="form-probe" class="dialog-inner">
+      <h2>添加 AI 供应商</h2>
+      <label>
+        API 地址
+        <input type="url" id="input-url" placeholder="https://api.openai.com/v1/chat/completions" required>
+      </label>
+      <label>
+        API Key（可选）
+        <input type="text" id="input-key" placeholder="sk-...">
+      </label>
+      <div id="probe-status" class="probe-status"></div>
+      <div class="dialog-actions">
+        <button type="button" id="btn-cancel">取消</button>
+        <button type="submit" id="btn-probe">探测</button>
+      </div>
+    </form>
+
+    <form id="form-confirm" class="dialog-inner" style="display:none">
+      <h2>确认供应商信息</h2>
+      <label>
+        供应商名称
+        <input type="text" id="confirm-name" required>
+      </label>
+      <label>
+        Base URL
+        <input type="text" id="confirm-base-url" required>
+      </label>
+      <label>
+        API 路径
+        <input type="text" id="confirm-endpoint">
+      </label>
+      <label>
+        API Key
+        <input type="text" id="confirm-key">
+      </label>
+      <div class="model-list">
+        <h3>模型</h3>
+        <div id="model-checkboxes"></div>
+        <div class="add-model-manual">
+          <input type="text" id="input-manual-model" placeholder="手动输入模型名">
+          <button type="button" id="btn-add-model">添加</button>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="btn-back">返回</button>
+        <button type="submit" id="btn-save">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 添加模型弹窗 -->
+  <dialog id="dialog-add-model">
+    <form id="form-add-model" class="dialog-inner">
+      <h2>添加模型到 <span id="add-model-provider"></span></h2>
+      <div id="probe-models-section" style="display:none">
+        <h3>探测到的模型</h3>
+        <div id="probe-model-checkboxes"></div>
+      </div>
+      <label>
+        模型名称
+        <input type="text" id="input-model-id" placeholder="gpt-4o" required>
+      </label>
+      <label>
+        显示名（可选）
+        <input type="text" id="input-model-display">
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="btn-cancel-model">取消</button>
+        <button type="button" id="btn-probe-model">重新探测</button>
+        <button type="submit">添加</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/providers.js"></script>
+</body>
+</html>
