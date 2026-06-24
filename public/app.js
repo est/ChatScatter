@@ -20,6 +20,7 @@ async function get(path) {
 
 let conversations = [];
 let activeConvId = null;
+let activeNodeIdx = null;
 let treeNodes = [];
 let sending = false;
 let currentUser = null;
@@ -31,17 +32,64 @@ const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"
 
 function laneColor(i) { return COLORS[i % COLORS.length]; }
 
+// --- Routing ---
+
+function parseRoute() {
+  const path = location.pathname;
+  const convMatch = path.match(/^\/conv\/([^/]+)(?:\/([^/]+))?$/);
+  if (convMatch) {
+    return { page: "chat", convId: convMatch[1], nodeIdx: convMatch[2] || null };
+  }
+  if (path === "/settings") return { page: "settings" };
+  return { page: "chat", convId: null, nodeIdx: null };
+}
+
+function navigateTo(path) {
+  history.pushState(null, "", path);
+  applyRoute();
+}
+
+async function applyRoute() {
+  const route = parseRoute();
+
+  if (route.page === "settings") {
+    window.location.href = "/providers.html";
+    return;
+  }
+
+  if (route.convId && route.convId !== activeConvId) {
+    activeConvId = route.convId;
+    activeNodeIdx = route.nodeIdx;
+    await loadTree(activeConvId);
+    if (!activeNodeIdx) {
+      const withContent = treeNodes.filter(n => n.user_content);
+      if (withContent.length) activeNodeIdx = withContent[withContent.length - 1].idx.toLowerCase();
+    }
+    if (activeNodeIdx) localStorage.setItem(`focus_${activeConvId}`, activeNodeIdx);
+    renderSidebar();
+    renderMessages();
+  } else if (!route.convId && activeConvId) {
+    activeConvId = null;
+    activeNodeIdx = null;
+    treeNodes = [];
+    renderSidebar();
+    renderMessages();
+  }
+}
+
+window.addEventListener("popstate", () => applyRoute());
+
 // --- Session ---
 
 async function checkSession() {
   try {
     const res = await fetch("/api/auth/me");
     const json = await res.json();
-    if (json.em === "unauthorized") { window.location.href = "/login"; return; }
+    if (json.em === "unauthorized") { location.href = "/login"; return false; }
     currentUser = json.data;
     if (currentUser) document.getElementById("main-header-meta").textContent = currentUser.email;
-  } catch { window.location.href = "/login"; return; }
-  loadConversations();
+    return true;
+  } catch { location.href = "/login"; return false; }
 }
 
 // --- Conversations ---
@@ -67,7 +115,8 @@ function renderSidebar() {
   if (activeConvId && treeNodes.length) {
     tree.innerHTML = `<div class="conv-list">${convListHtml}</div>
       <div class="tree-divider"></div>
-      <div class="graph-wrap">${renderGraph()}</div>`;
+      <div class="graph-wrap" id="graph-wrap">${renderGraph()}</div>`;
+    scrollGraphToFocus();
   } else {
     tree.innerHTML = `<div class="conv-list">${convListHtml}</div>`;
   }
@@ -78,8 +127,7 @@ function renderSidebar() {
 function renderGraph() {
   if (!treeNodes.length) return "";
 
-  // Assign lanes
-  const laneMap = new Map(); // idx -> lane
+  const laneMap = new Map();
   let maxLane = 0;
 
   for (const node of treeNodes) {
@@ -88,26 +136,23 @@ function renderGraph() {
     const scatterFrom = node.scatter_from ? node.scatter_from.toLowerCase() : null;
 
     if (scatterFrom) {
-      // Branch: use parent's lane + 1
       const parentLane = laneMap.get(scatterFrom) ?? 0;
       laneMap.set(idx, parentLane + 1);
     } else if (prefix) {
-      // Continuation: use last ancestor's lane
       const lastAncestor = prefix.slice(-4);
       laneMap.set(idx, laneMap.get(lastAncestor) ?? 0);
     } else {
-      // Root
       laneMap.set(idx, 0);
     }
     maxLane = Math.max(maxLane, laneMap.get(idx));
   }
 
-  const svgW = (maxLane + 2) * LANE_W + 260;
+  const svgW = (maxLane + 2) * LANE_W + 280;
   const svgH = treeNodes.length * ROW_H + 16;
 
   let svg = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">`;
 
-  const focusIdx = (localStorage.getItem(`focus_${activeConvId}`) || "").toLowerCase();
+  const focusIdx = (activeNodeIdx || "").toLowerCase();
 
   for (let i = 0; i < treeNodes.length; i++) {
     const node = treeNodes[i];
@@ -115,37 +160,32 @@ function renderGraph() {
     const prefix = (node.prefix_idx || "").toLowerCase();
     const scatterFrom = node.scatter_from ? node.scatter_from.toLowerCase() : null;
     const lane = laneMap.get(idx) ?? 0;
-    const cx = 12 + lane * LANE_W;
-    const cy = 12 + i * ROW_H;
+    const cx = 14 + lane * LANE_W;
+    const cy = 14 + i * ROW_H;
     const color = laneColor(lane);
     const isFocus = idx === focusIdx;
 
-    // Draw connection to parent
     if (prefix) {
       const lastAncestor = prefix.slice(-4);
       const parentLane = laneMap.get(lastAncestor) ?? 0;
       const parentRow = treeNodes.findIndex(n => n.idx.toLowerCase() === lastAncestor);
       if (parentRow >= 0) {
-        const px = 12 + parentLane * LANE_W;
-        const py = 12 + parentRow * ROW_H;
+        const px = 14 + parentLane * LANE_W;
+        const py = 14 + parentRow * ROW_H;
         if (lane !== parentLane) {
-          // Branch: curved line
-          svg += `<path d="M${px},${py + DOT_R} C${px},${py + ROW_H / 2} ${cx},${cy - ROW_H / 2} ${cx},${cy - DOT_R}" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>`;
+          svg += `<path d="M${px},${py + DOT_R} C${px},${py + ROW_H / 2} ${cx},${cy - ROW_H / 2} ${cx},${cy - DOT_R}" stroke="${color}" stroke-width="2" fill="none" opacity="0.6"/>`;
         } else {
-          // Straight line
-          svg += `<line x1="${px}" y1="${py + DOT_R}" x2="${cx}" y2="${cy - DOT_R}" stroke="${color}" stroke-width="2" opacity="0.5"/>`;
+          svg += `<line x1="${px}" y1="${py + DOT_R}" x2="${cx}" y2="${cy - DOT_R}" stroke="${color}" stroke-width="2" opacity="0.4"/>`;
         }
       }
     }
 
-    // Draw dot
-    svg += `<circle cx="${cx}" cy="${cy}" r="${DOT_R}" fill="${isFocus ? color : "#fff"}" stroke="${color}" stroke-width="2" style="cursor:pointer" onclick="window._graphClick('${idx}')"/>`;
+    svg += `<circle cx="${cx}" cy="${cy}" r="${isFocus ? DOT_R + 1 : DOT_R}" fill="${isFocus ? color : "#fff"}" stroke="${color}" stroke-width="${isFocus ? 2.5 : 2}" style="cursor:pointer" onclick="window._graphClick('${idx}')"/>`;
 
-    // Label
-    const label = node.title || (node.user_content ? node.user_content.slice(0, 40) : "");
+    const label = node.title || (node.user_content ? node.user_content.slice(0, 50) : "");
     if (label) {
-      const labelX = 12 + (maxLane + 1) * LANE_W + 8;
-      svg += `<text x="${labelX}" y="${cy + 4}" font-size="12" fill="${isFocus ? '#1a1a1a' : '#666'}" font-family="system-ui" style="cursor:pointer" onclick="window._graphClick('${idx}')">${esc(label)}</text>`;
+      const labelX = 14 + (maxLane + 1) * LANE_W + 10;
+      svg += `<text x="${labelX}" y="${cy + 4}" font-size="12" fill="${isFocus ? '#1a1a1a' : '#888'}" font-weight="${isFocus ? '600' : '400'}" font-family="system-ui" style="cursor:pointer" onclick="window._graphClick('${idx}')">${esc(label)}</text>`;
     }
   }
 
@@ -153,8 +193,21 @@ function renderGraph() {
   return svg;
 }
 
+function scrollGraphToFocus() {
+  const wrap = document.getElementById("graph-wrap");
+  if (!wrap) return;
+  const focusIdx = (activeNodeIdx || "").toLowerCase();
+  const focusNode = treeNodes.find(n => n.idx.toLowerCase() === focusIdx);
+  if (!focusNode) return;
+  const row = treeNodes.indexOf(focusNode);
+  const targetY = row * ROW_H;
+  wrap.scrollTop = Math.max(0, targetY - wrap.clientHeight / 2);
+}
+
 window._graphClick = function(idx) {
+  activeNodeIdx = idx;
   localStorage.setItem(`focus_${activeConvId}`, idx);
+  navigateTo(`/conv/${activeConvId}/${idx}`);
   renderSidebar();
   renderMessages();
   const el = document.getElementById("msg-" + idx);
@@ -169,15 +222,11 @@ window._graphClick = function(idx) {
 
 window.selectConv = async function(convId) {
   activeConvId = convId;
-  localStorage.setItem("activeConv", convId);
   await loadTree(convId);
-  // Auto-focus latest if no focus set
-  if (!localStorage.getItem(`focus_${convId}`) && treeNodes.length) {
-    const withContent = treeNodes.filter(n => n.user_content);
-    if (withContent.length) {
-      localStorage.setItem(`focus_${convId}`, withContent[withContent.length - 1].idx.toLowerCase());
-    }
-  }
+  const withContent = treeNodes.filter(n => n.user_content);
+  activeNodeIdx = withContent.length ? withContent[withContent.length - 1].idx.toLowerCase() : null;
+  if (activeNodeIdx) localStorage.setItem(`focus_${convId}`, activeNodeIdx);
+  navigateTo(`/conv/${convId}${activeNodeIdx ? "/" + activeNodeIdx : ""}`);
   renderSidebar();
   renderMessages();
 };
@@ -206,7 +255,7 @@ function renderMessages() {
     return;
   }
 
-  const focusIdx = (localStorage.getItem(`focus_${activeConvId}`) || "").toLowerCase();
+  const focusIdx = (activeNodeIdx || "").toLowerCase();
   let pathNodes = [];
 
   if (focusIdx) {
@@ -220,13 +269,10 @@ function renderMessages() {
       pathNodes.push(focusNode);
     }
   } else {
-    // Show all root nodes
     pathNodes = treeNodes.filter(n => !n.prefix_idx || n.prefix_idx === "");
   }
 
-  // Filter to only nodes with content
   pathNodes = pathNodes.filter(n => n.user_content || n.assistant_content);
-
   title.textContent = treeNodes[0]?.title || "Chat";
 
   if (!pathNodes.length) {
@@ -268,8 +314,12 @@ function renderNodeMessage(node) {
 }
 
 function renderMarkdown(text, nodeIdx) {
-  if (typeof marked === "undefined") return `<pre>${esc(text)}</pre>`;
-  const html = marked.parse(text);
+  let html;
+  if (typeof marked !== "undefined") {
+    html = marked.parse(text);
+  } else {
+    html = `<pre style="white-space:pre-wrap">${esc(text)}</pre>`;
+  }
   return html.replace(
     /<h2>(.*?)<\/h2>/g,
     (_, heading) => `<h2 class="branch-heading" onclick="window._branch('${nodeIdx}', '${esc(heading).replace(/'/g, "\\'")}')">▸ ${heading}</h2>`
@@ -281,19 +331,24 @@ window._branch = async function(nodeIdx, heading) {
   const msg = prompt(`Branch to "${heading}" — enter your question:`);
   if (!msg) return;
 
-  try {
-    const container = document.getElementById("messages");
-    container.innerHTML += `<div class="msg msg-user"><div class="msg-content"><div class="msg-label">You</div><div class="msg-body">${esc(msg)}</div></div></div>
-      <div class="msg msg-assistant msg-loading"><div class="msg-content"><div class="msg-label">AI</div><div class="msg-body"><em>Thinking...</em></div></div></div>`;
-    container.scrollTop = container.scrollHeight;
+  const container = document.getElementById("messages");
+  container.innerHTML += `<div class="msg msg-user"><div class="msg-content"><div class="msg-label">You</div><div class="msg-body">${esc(msg)}</div></div></div>
+    <div class="msg msg-assistant msg-loading"><div class="msg-content"><div class="msg-label">AI</div><div class="msg-body"><em>Thinking...</em></div></div></div>`;
+  container.scrollTop = container.scrollHeight;
 
+  try {
     const result = await post("/branch", { conv_id: activeConvId, node_idx: nodeIdx, heading, message: msg });
-    if (result.idx) localStorage.setItem(`focus_${activeConvId}`, result.idx.toLowerCase());
+    if (result.idx) {
+      activeNodeIdx = result.idx.toLowerCase();
+      localStorage.setItem(`focus_${activeConvId}`, activeNodeIdx);
+      navigateTo(`/conv/${activeConvId}/${activeNodeIdx}`);
+    }
     await loadTree(activeConvId);
     renderSidebar();
     renderMessages();
   } catch (err) {
-    alert("Branch error: " + err.message);
+    removeLoadingPlaceholder();
+    container.innerHTML += `<div class="msg msg-error"><div class="msg-body">Error: ${esc(err.message)}</div></div>`;
   }
 };
 
@@ -307,6 +362,11 @@ document.getElementById("input").addEventListener("input", function() {
   this.style.height = "auto";
   this.style.height = Math.min(this.scrollHeight, 120) + "px";
 });
+
+function removeLoadingPlaceholder() {
+  const loading = document.querySelector(".msg-loading");
+  if (loading) loading.remove();
+}
 
 async function sendMessage() {
   if (sending) return;
@@ -326,24 +386,27 @@ async function sendMessage() {
   try {
     let result;
     if (!activeConvId) {
-      // New conversation — creates root node with real content
       result = await post("/conversation", { message: msg });
       activeConvId = result.conv_id;
-      localStorage.setItem("activeConv", result.conv_id);
     } else {
-      const focusIdx = localStorage.getItem(`focus_${activeConvId}`);
-      result = await post("/send", { conv_id: activeConvId, message: msg, node_idx: focusIdx || undefined });
+      result = await post("/send", { conv_id: activeConvId, message: msg, node_idx: activeNodeIdx || undefined });
     }
 
-    if (result.idx) localStorage.setItem(`focus_${activeConvId}`, result.idx.toLowerCase());
+    if (result.idx) {
+      activeNodeIdx = result.idx.toLowerCase();
+      localStorage.setItem(`focus_${activeConvId}`, activeNodeIdx);
+      navigateTo(`/conv/${activeConvId}/${activeNodeIdx}`);
+    }
     await loadConversations();
     await loadTree(activeConvId);
     renderSidebar();
     renderMessages();
   } catch (err) {
+    removeLoadingPlaceholder();
     container.innerHTML += `<div class="msg msg-error"><div class="msg-body">Error: ${esc(err.message)}</div></div>`;
   } finally {
     sending = false;
+    input.focus();
   }
 }
 
@@ -351,20 +414,21 @@ async function sendMessage() {
 
 document.getElementById("btn-toggle-sidebar").onclick = () => {
   document.getElementById("sidebar").classList.add("hidden");
-  document.getElementById("btn-show-sidebar").style.display = "";
+  document.getElementById("sidebar-collapsed").style.display = "";
 };
 
-document.getElementById("btn-show-sidebar").onclick = () => {
+document.getElementById("btn-expand-sidebar").onclick = () => {
   document.getElementById("sidebar").classList.remove("hidden");
-  document.getElementById("btn-show-sidebar").style.display = "none";
+  document.getElementById("sidebar-collapsed").style.display = "none";
 };
 
 // --- New Chat ---
 
 document.getElementById("btn-new-chat").onclick = () => {
   activeConvId = null;
+  activeNodeIdx = null;
   treeNodes = [];
-  localStorage.removeItem("activeConv");
+  navigateTo("/");
   renderSidebar();
   renderMessages();
 };
@@ -378,19 +442,35 @@ function esc(s) {
 // --- Init ---
 
 async function init() {
-  await checkSession();
-  const saved = localStorage.getItem("activeConv");
-  if (saved) {
-    activeConvId = saved;
-    await loadTree(saved);
-    // Auto-focus latest
-    if (!localStorage.getItem(`focus_${saved}`) && treeNodes.length) {
+  if (!await checkSession()) return;
+  await loadConversations();
+
+  const route = parseRoute();
+  if (route.convId) {
+    activeConvId = route.convId;
+    await loadTree(activeConvId);
+    activeNodeIdx = route.nodeIdx;
+    if (!activeNodeIdx) {
       const withContent = treeNodes.filter(n => n.user_content);
-      if (withContent.length) localStorage.setItem(`focus_${saved}`, withContent[withContent.length - 1].idx.toLowerCase());
+      if (withContent.length) activeNodeIdx = withContent[withContent.length - 1].idx.toLowerCase();
     }
-    renderSidebar();
-    renderMessages();
+    if (activeNodeIdx) localStorage.setItem(`focus_${activeConvId}`, activeNodeIdx);
+  } else {
+    const saved = localStorage.getItem("activeConv");
+    if (saved) {
+      activeConvId = saved;
+      await loadTree(saved);
+      const withContent = treeNodes.filter(n => n.user_content);
+      activeNodeIdx = withContent.length ? withContent[withContent.length - 1].idx.toLowerCase() : null;
+      if (activeNodeIdx) {
+        localStorage.setItem(`focus_${saved}`, activeNodeIdx);
+        navigateTo(`/conv/${saved}/${activeNodeIdx}`);
+      }
+    }
   }
+
+  renderSidebar();
+  renderMessages();
 }
 
 init();

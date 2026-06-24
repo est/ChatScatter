@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ChatScatter</title>
+  <title>🌲 Tree of Threads 🪡</title>
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -11,7 +11,7 @@
   <div class="app">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <h1>ChatScatter</h1>
+        <h1>🌲 Tree of Threads 🪡</h1>
         <div class="header-actions">
           <button id="btn-new-chat" title="新对话">＋</button>
           <a href="/providers.html" class="btn-settings" title="供应商管理">⚙</a>
@@ -21,12 +21,16 @@
       <nav id="tree"></nav>
     </aside>
 
+    <div class="sidebar-collapsed" id="sidebar-collapsed" style="display:none">
+      <button id="btn-expand-sidebar" class="btn-expand-sidebar" title="展开侧栏">
+        <span class="expand-logo">🌲</span>
+        <span class="expand-arrow">▶</span>
+      </button>
+    </div>
+
     <main class="main">
       <div class="main-header">
-        <div class="main-header-left">
-          <button id="btn-show-sidebar" class="btn-toggle btn-show-sidebar" title="显示侧栏" style="display:none">▶</button>
-          <span id="main-header-title">Select a conversation</span>
-        </div>
+        <span id="main-header-title">Select a conversation</span>
         <span id="main-header-meta" class="header-meta"></span>
       </div>
       <div class="messages" id="messages">

@@ -11,7 +11,7 @@ import type {
 } from "@simplewebauthn/server";
 import { Env, User, Passkey, now, blobToHex } from "./types";
 
-const RP_NAME = "ChatScatter";
+const RP_NAME = "Tree of Threads";
 const SESSION_DURATION = 30 * 24 * 60 * 60;
 
 export function getRpId(request: Request): string {
