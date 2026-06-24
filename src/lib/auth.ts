@@ -19,7 +19,7 @@ export function getRpId(request: Request): string {
   if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
     return url.hostname;
   }
-  return "chats.est.im";
+  return "tot.est.im";
 }
 
 export function getRpOrigin(request: Request): string {

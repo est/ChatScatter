@@ -56,5 +56,4 @@ CREATE TABLE IF NOT EXISTS chat_nodes (
   PRIMARY KEY (conv_id, idx)
 );
 
-CREATE INDEX IF NOT EXISTS idx_node_conv ON chat_nodes(conv_id);
 CREATE INDEX IF NOT EXISTS idx_node_prefix ON chat_nodes(conv_id, prefix_idx);
