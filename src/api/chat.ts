@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { Env, User, now, uuid, blobToHex, hexToBytes } from "../lib/types";
+import { Env, User, ChatNode, now, uuid, blobToHex, hexToBytes } from "../lib/types";
 import { callLLM, buildSystemPrompt } from "../lib/llm";
-import { getNextId, buildContext, parseHeadings } from "../lib/context";
+import { getNextIdx, buildContext, parseHeadings } from "../lib/context";
 
 export function createChatRoutes() {
   const api = new Hono<{ Bindings: Env; Variables: { user?: User } }>();
@@ -9,77 +9,82 @@ export function createChatRoutes() {
   api.post("/conversation", async (c) => {
     const user = c.get("user");
     const body = await c.req.json<{ data?: { title?: string } }>();
-    const id = uuid();
+    const convId = uuid();
+    const { bytes: idxBytes, hex: idxHex } = await getNextIdx(c.env, convId);
     const ts = now();
     const title = body.data?.title || "New Chat";
+
     await c.env.DB.prepare(
-      "INSERT INTO chat_conversations (id, user_id, title, focus_id, meta, created_at, updated_at) VALUES (?, ?, ?, NULL, '{}', ?, ?)"
-    ).bind(id, user?.id ?? null, title, ts, ts).run();
-    return c.json({ data: { id, title }, em: "" });
+      `INSERT INTO chat_nodes (conv_id, idx, title, prefix_idx, user_id, user_content, created_at)
+       VALUES (?, ?, ?, X'', ?, ?, ?)`
+    ).bind(convId, idxBytes, title, user?.id ?? null, "", ts).run();
+
+    return c.json({ data: { conv_id: convId, idx: idxHex, title }, em: "" });
   });
 
   api.get("/list", async (c) => {
     const user = c.get("user");
     if (!user) return c.json({ data: [], em: "" });
+
     const rows = await c.env.DB.prepare(
-      "SELECT * FROM chat_conversations WHERE user_id = ? ORDER BY updated_at DESC"
+      `SELECT conv_id, hex(idx) as idx, title, user_content, created_at
+       FROM chat_nodes
+       WHERE prefix_idx = X'' AND user_id = ?
+       ORDER BY created_at DESC`
     ).bind(user.id).all();
+
     return c.json({ data: rows.results, em: "" });
   });
 
   api.get("/tree", async (c) => {
-    const convId = c.req.query("conversation_id");
-    if (!convId) return c.json({ data: null, em: "conversation_id required" });
-
-    const conv = await c.env.DB.prepare(
-      "SELECT id, title, hex(focus_id) as focus_id, meta, created_at, updated_at FROM chat_conversations WHERE id = ?"
-    ).bind(convId).first();
+    const convId = c.req.query("conv_id");
+    if (!convId) return c.json({ data: null, em: "conv_id required" });
 
     const nodes = await c.env.DB.prepare(
-      "SELECT conversation_id, hex(id) as id, parents, user_content, assistant_content, meta, created_at FROM chat_nodes WHERE conversation_id = ? ORDER BY id"
+      `SELECT conv_id, hex(idx) as idx, title, hex(prefix_idx) as prefix_idx,
+              hex(scatter_from) as scatter_from, hex(gather_from) as gather_from,
+              user_id, user_content, assistant_content, meta, created_at
+       FROM chat_nodes WHERE conv_id = ? ORDER BY idx`
     ).bind(convId).all();
 
-    return c.json({ data: { conversation: conv, nodes: nodes.results }, em: "" });
+    return c.json({ data: nodes.results, em: "" });
   });
 
   api.post("/send", async (c) => {
+    const user = c.get("user");
     const body = await c.req.json<{
-      data: { conversation_id: string; message: string; node_id?: string };
+      data: { conv_id: string; message: string; node_idx?: string };
     }>();
     const d = body.data;
-    if (!d.conversation_id || !d.message) {
-      return c.json({ data: null, em: "conversation_id and message required" });
+    if (!d.conv_id || !d.message) {
+      return c.json({ data: null, em: "conv_id and message required" });
     }
 
-    const { bytes: newIdBytes, hex: newIdHex } = await getNextId(c.env, d.conversation_id);
+    const { bytes: newIdxBytes, hex: newIdxHex } = await getNextIdx(c.env, d.conv_id);
 
-    const conv = await c.env.DB.prepare(
-      "SELECT focus_id FROM chat_conversations WHERE id = ?"
-    ).bind(d.conversation_id).first<{ focus_id: ArrayBuffer | null }>();
+    let prefixHex = "";
+    let contextIdxHex = "";
 
-    let parents = "";
-    let contextNodeIdHex = "";
-
-    if (d.node_id) {
+    if (d.node_idx) {
       const targetNode = await c.env.DB.prepare(
-        "SELECT parents FROM chat_nodes WHERE conversation_id = ? AND id = ?"
-      ).bind(d.conversation_id, hexToBytes(d.node_id)).first<{ parents: string }>();
+        "SELECT hex(prefix_idx) as prefix_idx FROM chat_nodes WHERE conv_id = ? AND idx = ?"
+      ).bind(d.conv_id, hexToBytes(d.node_idx)).first<{ prefix_idx: string }>();
       if (targetNode) {
-        parents = targetNode.parents ? `${targetNode.parents}.${d.node_id}` : d.node_id;
-        contextNodeIdHex = d.node_id;
+        prefixHex = targetNode.prefix_idx ? `${targetNode.prefix_idx}${d.node_idx}` : d.node_idx;
+        contextIdxHex = d.node_idx;
       }
-    } else if (conv?.focus_id) {
-      contextNodeIdHex = blobToHex(new Uint8Array(conv.focus_id));
-      const focusNode = await c.env.DB.prepare(
-        "SELECT parents FROM chat_nodes WHERE conversation_id = ? AND id = ?"
-      ).bind(d.conversation_id, conv.focus_id).first<{ parents: string }>();
-      if (focusNode) {
-        parents = focusNode.parents ? `${focusNode.parents}.${contextNodeIdHex}` : contextNodeIdHex;
+    } else {
+      const latest = await c.env.DB.prepare(
+        "SELECT hex(idx) as idx, hex(prefix_idx) as prefix_idx FROM chat_nodes WHERE conv_id = ? AND user_content != '' ORDER BY idx DESC LIMIT 1"
+      ).bind(d.conv_id).first<{ idx: string; prefix_idx: string }>();
+      if (latest) {
+        prefixHex = latest.prefix_idx ? `${latest.prefix_idx}${latest.idx}` : latest.idx;
+        contextIdxHex = latest.idx;
       }
     }
 
-    const contextMessages = contextNodeIdHex
-      ? await buildContext(c.env, d.conversation_id, parents.split(".").slice(0, -1).join("."), contextNodeIdHex)
+    const contextMessages = contextIdxHex
+      ? await buildContext(c.env, d.conv_id, prefixHex.length > 4 ? prefixHex.slice(0, -4) : "", contextIdxHex)
       : [];
 
     const llmMessages = [
@@ -100,64 +105,42 @@ export function createChatRoutes() {
     const headings = parseHeadings(assistantContent);
 
     await c.env.DB.prepare(
-      `INSERT INTO chat_nodes (conversation_id, id, parents, user_content, user_meta, assistant_content, assistant_meta, meta, created_at)
-       VALUES (?, ?, ?, ?, '{}', ?, '{}', '{}', ?)`
-    ).bind(d.conversation_id, newIdBytes, parents, d.message, assistantContent, ts).run();
-
-    await c.env.DB.prepare(
-      "UPDATE chat_conversations SET focus_id = ?, updated_at = ? WHERE id = ?"
-    ).bind(newIdBytes, ts, d.conversation_id).run();
+      `INSERT INTO chat_nodes (conv_id, idx, title, prefix_idx, user_id, user_content, assistant_content, created_at)
+       VALUES (?, ?, '', ?, ?, ?, ?, ?)`
+    ).bind(d.conv_id, newIdxBytes, hexToBytes(prefixHex), user?.id ?? null, d.message, assistantContent, ts).run();
 
     return c.json({
-      data: { id: newIdHex, parents, user_content: d.message, assistant_content: assistantContent, headings },
+      data: { idx: newIdxHex, prefix_idx: prefixHex, user_content: d.message, assistant_content: assistantContent, headings },
       em: "",
     });
   });
 
   api.post("/branch", async (c) => {
+    const user = c.get("user");
     const body = await c.req.json<{
-      data: { conversation_id: string; node_id: string; heading: string };
+      data: { conv_id: string; node_idx: string; heading: string };
     }>();
     const d = body.data;
-    if (!d.conversation_id || !d.node_id || !d.heading) {
-      return c.json({ data: null, em: "conversation_id, node_id, heading required" });
+    if (!d.conv_id || !d.node_idx || !d.heading) {
+      return c.json({ data: null, em: "conv_id, node_idx, heading required" });
     }
 
-    const { bytes: newIdBytes, hex: newIdHex } = await getNextId(c.env, d.conversation_id);
+    const { bytes: newIdxBytes, hex: newIdxHex } = await getNextIdx(c.env, d.conv_id);
     const parentNode = await c.env.DB.prepare(
-      "SELECT parents FROM chat_nodes WHERE conversation_id = ? AND id = ?"
-    ).bind(d.conversation_id, hexToBytes(d.node_id)).first<{ parents: string }>();
+      "SELECT hex(prefix_idx) as prefix_idx FROM chat_nodes WHERE conv_id = ? AND idx = ?"
+    ).bind(d.conv_id, hexToBytes(d.node_idx)).first<{ prefix_idx: string }>();
 
-    const newParents = parentNode?.parents
-      ? `${parentNode.parents}.${d.node_id}`
-      : d.node_id;
+    const newPrefix = parentNode?.prefix_idx
+      ? `${parentNode.prefix_idx}${d.node_idx}`
+      : d.node_idx;
 
     const ts = now();
     await c.env.DB.prepare(
-      `INSERT INTO chat_nodes (conversation_id, id, parents, user_content, user_meta, assistant_content, assistant_meta, meta, created_at)
-       VALUES (?, ?, ?, ?, '{}', '', '{}', '{}', ?)`
-    ).bind(d.conversation_id, newIdBytes, newParents, `[Branch: ${d.heading}]`, ts).run();
+      `INSERT INTO chat_nodes (conv_id, idx, title, prefix_idx, scatter_from, user_id, user_content, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(d.conv_id, newIdxBytes, `[Branch: ${d.heading}]`, hexToBytes(newPrefix), hexToBytes(d.node_idx), user?.id ?? null, "", ts).run();
 
-    await c.env.DB.prepare(
-      "UPDATE chat_conversations SET focus_id = ?, updated_at = ? WHERE id = ?"
-    ).bind(newIdBytes, ts, d.conversation_id).run();
-
-    return c.json({ data: { id: newIdHex, parents: newParents }, em: "" });
-  });
-
-  api.post("/focus", async (c) => {
-    const body = await c.req.json<{ data: { conversation_id: string; node_id: string } }>();
-    const d = body.data;
-    if (!d.conversation_id || !d.node_id) {
-      return c.json({ data: null, em: "conversation_id and node_id required" });
-    }
-
-    const idBytes = hexToBytes(d.node_id);
-    await c.env.DB.prepare(
-      "UPDATE chat_conversations SET focus_id = ?, updated_at = ? WHERE id = ?"
-    ).bind(idBytes, now(), d.conversation_id).run();
-
-    return c.json({ data: { node_id: d.node_id }, em: "" });
+    return c.json({ data: { idx: newIdxHex, prefix_idx: newPrefix }, em: "" });
   });
 
   return api;

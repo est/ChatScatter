@@ -47,20 +47,14 @@ export interface ProviderGroup {
   models: AiModel[];
 }
 
-export interface ChatConversation {
-  id: string;
-  user_id: number | null;
-  title: string;
-  focus_id: string | null;
-  meta: string;
-  created_at: number;
-  updated_at: number;
-}
-
 export interface ChatNode {
-  conversation_id: string;
-  id: string;
-  parents: string;
+  conv_id: string;
+  idx: string;
+  title: string;
+  prefix_idx: string;
+  scatter_from: string | null;
+  gather_from: string | null;
+  user_id: number | null;
   user_content: string;
   user_meta: string;
   assistant_content: string;
@@ -96,6 +90,22 @@ export function intTo2Bytes(n: number): Uint8Array {
 
 export function bytesToInt(bytes: Uint8Array): number {
   return (bytes[0] << 8) | bytes[1];
+}
+
+export function prefixIdxToHexes(blob: string): string[] {
+  const hexes: string[] = [];
+  for (let i = 0; i < blob.length; i += 4) {
+    hexes.push(blob.substring(i, i + 4));
+  }
+  return hexes;
+}
+
+export function hexToPrefixBlob(hexes: string[]): string {
+  return hexes.join("");
+}
+
+export function prefixDepth(blob: string): number {
+  return blob.length / 4;
 }
 
 export function randomToken(): Uint8Array {

@@ -39,28 +39,22 @@ CREATE TABLE IF NOT EXISTS passkeys (
 
 CREATE INDEX IF NOT EXISTS idx_passkey_user ON passkeys(user_id);
 
-CREATE TABLE IF NOT EXISTS chat_conversations (
-  id         TEXT PRIMARY KEY,
-  user_id    INTEGER,
-  title      TEXT NOT NULL DEFAULT 'New Chat',
-  focus_id   BLOB,
-  meta       TEXT DEFAULT '{}',
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS chat_nodes (
-  conversation_id TEXT NOT NULL,
-  id              BLOB NOT NULL,
-  parents         TEXT NOT NULL DEFAULT '',
-  user_content    TEXT NOT NULL,
-  user_meta       TEXT DEFAULT '{}',
+  conv_id           TEXT NOT NULL,
+  idx               BLOB NOT NULL,
+  title             TEXT DEFAULT '',
+  prefix_idx        BLOB NOT NULL DEFAULT X'',
+  scatter_from      BLOB,
+  gather_from       BLOB,
+  user_id           INTEGER,
+  user_content      TEXT NOT NULL DEFAULT '',
+  user_meta         TEXT DEFAULT '{}',
   assistant_content TEXT NOT NULL DEFAULT '',
-  assistant_meta  TEXT DEFAULT '{}',
-  meta            TEXT DEFAULT '{}',
-  created_at      INTEGER NOT NULL,
-  PRIMARY KEY (conversation_id, id)
+  assistant_meta    TEXT DEFAULT '{}',
+  meta              TEXT DEFAULT '{}',
+  created_at        INTEGER NOT NULL,
+  PRIMARY KEY (conv_id, idx)
 );
 
-CREATE INDEX IF NOT EXISTS idx_node_conv ON chat_nodes(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_node_parents ON chat_nodes(conversation_id, parents);
+CREATE INDEX IF NOT EXISTS idx_node_conv ON chat_nodes(conv_id);
+CREATE INDEX IF NOT EXISTS idx_node_prefix ON chat_nodes(conv_id, prefix_idx);

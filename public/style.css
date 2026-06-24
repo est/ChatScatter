@@ -540,49 +540,56 @@ dialog::backdrop { background: rgba(0, 0, 0, .3); backdrop-filter: blur(2px); }
 ::-webkit-scrollbar-thumb { background: var(--green-200); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--green-300); }
 
-/* === Chat: Node tree in sidebar === */
+/* === Chat: git log --graph in sidebar === */
 .tree-divider {
   height: 1px;
   background: var(--border);
   margin: 8px 12px;
 }
 
-.node-tree-inner { padding: 0 4px; }
-
-.node-item {
-  display: flex; align-items: center;
-  padding: 5px 8px;
+.graph-container {
+  padding: 4px 8px;
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-secondary);
+}
+
+.graph-line {
+  display: flex;
+  align-items: center;
+  padding: 3px 4px;
   cursor: pointer;
-  border-radius: var(--radius);
-  transition: all .1s;
-}
-
-.node-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-
-.node-item.focus {
-  background: var(--green-100);
-  color: var(--green-800);
-  font-weight: 600;
-}
-
-.node-arrow {
-  width: 14px;
-  font-size: 10px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.node-label {
-  flex: 1;
+  border-radius: 3px;
+  transition: background .1s;
   white-space: nowrap;
+}
+
+.graph-line:hover { background: var(--bg-hover); }
+.graph-line.focus { background: var(--green-100); }
+
+.graph-chars {
+  display: inline-flex;
+  min-width: 24px;
+  margin-right: 6px;
+  flex-shrink: 0;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+.graph-star { color: var(--green-600); }
+.graph-pipe { color: #aaa; }
+.graph-slash { color: var(--green-400); }
+.graph-space { color: transparent; }
+
+.graph-label {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--text-primary);
 }
 
-.node-children {
-  padding-left: 16px;
+.graph-line.focus .graph-label {
+  color: var(--green-800);
+  font-weight: 600;
 }
 
 /* === Chat: Messages === */

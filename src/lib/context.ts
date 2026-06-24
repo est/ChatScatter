@@ -5,14 +5,14 @@ interface LLMMessage {
   content: string;
 }
 
-export async function getNextId(env: Env, conversationId: string): Promise<{ bytes: Uint8Array; hex: string }> {
+export async function getNextIdx(env: Env, convId: string): Promise<{ bytes: Uint8Array; hex: string }> {
   const row = await env.DB.prepare(
-    "SELECT id FROM chat_nodes WHERE conversation_id = ? ORDER BY id DESC LIMIT 1"
-  ).bind(conversationId).first<{ id: ArrayBuffer }>();
+    "SELECT idx FROM chat_nodes WHERE conv_id = ? ORDER BY idx DESC LIMIT 1"
+  ).bind(convId).first<{ idx: ArrayBuffer }>();
 
   let next = 1;
-  if (row?.id) {
-    const arr = new Uint8Array(row.id);
+  if (row?.idx) {
+    const arr = new Uint8Array(row.idx);
     next = bytesToInt(arr) + 1;
   }
 
@@ -20,17 +20,17 @@ export async function getNextId(env: Env, conversationId: string): Promise<{ byt
   return { bytes, hex: blobToHex(bytes) };
 }
 
-export async function buildContext(env: Env, conversationId: string, nodeParents: string, selfHex: string): Promise<LLMMessage[]> {
-  const pathHexes = nodeParents ? nodeParents.split(".") : [];
-  pathHexes.push(selfHex);
+export async function buildContext(env: Env, convId: string, prefixHex: string, selfHex: string): Promise<LLMMessage[]> {
+  const hexes: string[] = prefixHex ? prefixHex.match(/.{4}/g) || [] : [];
+  hexes.push(selfHex);
 
-  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  const messages: LLMMessage[] = [];
 
-  for (const hex of pathHexes) {
-    const idBytes = hexToBytes(hex);
+  for (const hex of hexes) {
+    const idxBytes = hexToBytes(hex);
     const node = await env.DB.prepare(
-      "SELECT * FROM chat_nodes WHERE conversation_id = ? AND id = ?"
-    ).bind(conversationId, idBytes).first<ChatNode>();
+      "SELECT * FROM chat_nodes WHERE conv_id = ? AND idx = ?"
+    ).bind(convId, idxBytes).first<ChatNode>();
 
     if (node) {
       messages.push({ role: "user", content: node.user_content });
@@ -41,10 +41,6 @@ export async function buildContext(env: Env, conversationId: string, nodeParents
   }
 
   return messages;
-}
-
-export function formatNodeId(hex: string): string {
-  return hex;
 }
 
 export function parseHeadings(markdown: string): string[] {
